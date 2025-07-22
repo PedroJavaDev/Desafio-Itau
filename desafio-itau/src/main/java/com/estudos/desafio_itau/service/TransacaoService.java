@@ -5,6 +5,9 @@ import com.estudos.desafio_itau.dto.EstatisticaResponse;
 import com.estudos.desafio_itau.exception.TransacaoInvalidaException;
 import com.estudos.desafio_itau.model.Transacao;
 import com.estudos.desafio_itau.repository.TransacaoRepository;
+import com.estudos.desafio_itau.util.TempoExecucaoLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +19,8 @@ import java.util.List;
 
 @Service
 public class TransacaoService {
+
+    private static final Logger logger = LoggerFactory.getLogger(TransacaoService.class);
 
     private final TransacaoRepository repository;
 
@@ -37,24 +42,31 @@ public class TransacaoService {
     }
 
     public EstatisticaResponse calcularEstatisticas() {
-        List<Transacao> transacoes = repository.buscarUltimosSegundos(segundos);
+        final EstatisticaResponse[] resposta = new EstatisticaResponse[1];
 
-        if (transacoes.isEmpty()) {
-            return new EstatisticaResponse(0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
-        }
+        TempoExecucaoLogger.medir(() -> {
+            List<Transacao> transacoes = repository.buscarUltimosSegundos(segundos);
 
-        DoubleSummaryStatistics stats = transacoes.stream()
-                .map(Transacao::getValor)
-                .mapToDouble(BigDecimal::doubleValue)
-                .summaryStatistics();
+            if (transacoes.isEmpty()) {
+                resposta[0] = new EstatisticaResponse(0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+                return;
+            }
 
-        BigDecimal sum = BigDecimal.valueOf(stats.getSum()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal avg = BigDecimal.valueOf(stats.getAverage()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal min = BigDecimal.valueOf(stats.getMin()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal max = BigDecimal.valueOf(stats.getMax()).setScale(2, RoundingMode.HALF_UP);
-        long count = stats.getCount();
+            DoubleSummaryStatistics stats = transacoes.stream()
+                    .map(Transacao::getValor)
+                    .mapToDouble(BigDecimal::doubleValue)
+                    .summaryStatistics();
 
-        return new EstatisticaResponse(count, sum, avg, min, max);
+            BigDecimal sum = BigDecimal.valueOf(stats.getSum()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal avg = BigDecimal.valueOf(stats.getAverage()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal min = BigDecimal.valueOf(stats.getMin()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal max = BigDecimal.valueOf(stats.getMax()).setScale(2, RoundingMode.HALF_UP);
+            long count = stats.getCount();
+
+            resposta[0] = new EstatisticaResponse(count, sum, avg, min, max);
+        }, logger, "Cálculo de estatísticas");
+
+        return resposta[0];
     }
 
     private void validar(TransacaoRequest request) {
